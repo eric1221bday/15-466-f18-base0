@@ -6,3 +6,5 @@ dist/SDL2.dll
 kit-libs-win
 kit-libs-linux
 kit-libs-osx
+cmake-build-debug
+CMakeLists.txt
