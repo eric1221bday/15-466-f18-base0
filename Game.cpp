@@ -127,7 +127,7 @@ Game::Game() {
   static_assert(sizeof(Vertex) == 28, "Vertex should be packed.");
 
   {  // load mesh data from a binary blob:
-    std::ifstream blob(data_path("meshes.blob"), std::ios::binary);
+    std::ifstream blob(data_path("hex-snake-meshes.blob"), std::ios::binary);
     // The blob will be made up of three chunks:
     // the first chunk will be vertex data (interleaved position/normal/color)
     // the second chunk will be characters
@@ -194,11 +194,8 @@ Game::Game() {
       }
       return f->second;
     };
-    tile_mesh = lookup("Tile");
-    cursor_mesh = lookup("Cursor");
-    doll_mesh = lookup("Doll");
-    egg_mesh = lookup("Egg");
-    cube_mesh = lookup("Cube");
+    tile_mesh = lookup("board_tile");
+    snake_body_mesh = lookup("snake_body");
   }
 
   {  // create vertex array object to hold the map from the mesh vertex buffer
@@ -231,16 +228,6 @@ Game::Game() {
 
   //----------------
   // set up game board with meshes and rolls:
-  board_meshes.reserve(board_size.x * board_size.y);
-  board_rotations.reserve(board_size.x * board_size.y);
-  std::mt19937 mt(0xbead1234);
-
-  std::vector<Mesh const *> meshes{&doll_mesh, &egg_mesh, &cube_mesh};
-
-  for (uint32_t i = 0; i < board_size.x * board_size.y; ++i) {
-    board_meshes.emplace_back(meshes[mt() % meshes.size()]);
-    board_rotations.emplace_back(glm::quat());
-  }
 }
 
 Game::~Game() {
@@ -307,32 +294,32 @@ bool Game::handle_event(SDL_Event const &evt, glm::uvec2 window_size) {
 void Game::update(float elapsed) {
   // if the roll keys are pressed, rotate everything on the same row or column
   // as the cursor:
-  glm::quat dr = glm::quat(1.0f, 0.0f, 0.0f, 0.0f);
-  float amt = elapsed * 1.0f;
-  if (controls.roll_left) {
-    dr = glm::angleAxis(amt, glm::vec3(0.0f, 1.0f, 0.0f)) * dr;
-  }
-  if (controls.roll_right) {
-    dr = glm::angleAxis(-amt, glm::vec3(0.0f, 1.0f, 0.0f)) * dr;
-  }
-  if (controls.roll_up) {
-    dr = glm::angleAxis(amt, glm::vec3(1.0f, 0.0f, 0.0f)) * dr;
-  }
-  if (controls.roll_down) {
-    dr = glm::angleAxis(-amt, glm::vec3(1.0f, 0.0f, 0.0f)) * dr;
-  }
-  if (dr != glm::quat()) {
-    for (uint32_t x = 0; x < board_size.x; ++x) {
-      glm::quat &r = board_rotations[cursor.y * board_size.x + x];
-      r = glm::normalize(dr * r);
-    }
-    for (uint32_t y = 0; y < board_size.y; ++y) {
-      if (y != cursor.y) {
-        glm::quat &r = board_rotations[y * board_size.x + cursor.x];
-        r = glm::normalize(dr * r);
-      }
-    }
-  }
+  //  glm::quat dr = glm::quat(1.0f, 0.0f, 0.0f, 0.0f);
+  //  float amt = elapsed * 1.0f;
+  //  if (controls.roll_left) {
+  //    dr = glm::angleAxis(amt, glm::vec3(0.0f, 1.0f, 0.0f)) * dr;
+  //  }
+  //  if (controls.roll_right) {
+  //    dr = glm::angleAxis(-amt, glm::vec3(0.0f, 1.0f, 0.0f)) * dr;
+  //  }
+  //  if (controls.roll_up) {
+  //    dr = glm::angleAxis(amt, glm::vec3(1.0f, 0.0f, 0.0f)) * dr;
+  //  }
+  //  if (controls.roll_down) {
+  //    dr = glm::angleAxis(-amt, glm::vec3(1.0f, 0.0f, 0.0f)) * dr;
+  //  }
+  //  if (dr != glm::quat()) {
+  //    for (uint32_t x = 0; x < board_size.x; ++x) {
+  //      glm::quat &r = board_rotations[cursor.y * board_size.x + x];
+  //      r = glm::normalize(dr * r);
+  //    }
+  //    for (uint32_t y = 0; y < board_size.y; ++y) {
+  //      if (y != cursor.y) {
+  //        glm::quat &r = board_rotations[y * board_size.x + cursor.x];
+  //        r = glm::normalize(dr * r);
+  //      }
+  //    }
+  //  }
 }
 
 void Game::draw(glm::uvec2 drawable_size) {
@@ -343,11 +330,13 @@ void Game::draw(glm::uvec2 drawable_size) {
 
     // want scale such that board * scale fits in [-aspect,aspect]x[-1.0,1.0]
     // screen box:
-    float scale = glm::min(2.0f * aspect / float(board_size.x),
-                           2.0f / float(board_size.y));
+    float scale =
+        glm::min(2.0f / float(board_size.x * hex_offset_x * 2),
+                 2.0f * aspect / float(board_size.y * hex_offset_y * 3));
 
     // center of board will be placed at center of screen:
-    glm::vec2 center = 0.5f * glm::vec2(board_size);
+    glm::vec2 center = 0.5f * glm::vec2(float(board_size.x * hex_offset_x * 2),
+                                        float(board_size.y * hex_offset_y * 3));
 
     // NOTE: glm matrices are specified in column-major order
     world_to_clip =
@@ -398,19 +387,30 @@ void Game::draw(glm::uvec2 drawable_size) {
 
   for (uint32_t y = 0; y < board_size.y; ++y) {
     for (uint32_t x = 0; x < board_size.x; ++x) {
+      float current_offset_x;
+      float current_offset_y = y * (3 * hex_offset_y);
+      if (y % 2 == 0) {
+        current_offset_x = x * hex_offset_x * 2 + hex_offset_x;
+      } else {
+        current_offset_x = x * hex_offset_x * 2;
+      }
       draw_mesh(tile_mesh,
                 glm::mat4(1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f,
-                          0.0f, 1.0f, 0.0f, x + 0.5f, y + 0.5f, -0.5f, 1.0f));
-      draw_mesh(*board_meshes[y * board_size.x + x],
-                glm::mat4(1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f,
-                          0.0f, 1.0f, 0.0f, x + 0.5f, y + 0.5f, 0.0f, 1.0f) *
-                    glm::mat4_cast(board_rotations[y * board_size.x + x]));
+                          0.0f, 1.0f, 0.0f, current_offset_x + 0.5f,
+                          current_offset_y + 0.5f, -0.5f, 1.0f));
+      //      draw_mesh(*board_meshes[y * board_size.x + x],
+      //                glm::mat4(1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f,
+      //                0.0f, 0.0f,
+      //                          0.0f, 1.0f, 0.0f, x + 0.5f, y + 0.5f,
+      //                          0.0f, 1.0f) *
+      //                    glm::mat4_cast(board_rotations[y * board_size.x +
+      //                    x]));
     }
   }
-  draw_mesh(
-      cursor_mesh,
-      glm::mat4(1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f,
-                1.0f, 0.0f, cursor.x + 0.5f, cursor.y + 0.5f, 0.0f, 1.0f));
+  //  draw_mesh(
+  //      cursor_mesh,
+  //      glm::mat4(1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f,
+  //                1.0f, 0.0f, cursor.x + 0.5f, cursor.y + 0.5f, 0.0f, 1.0f));
 
   glUseProgram(0);
 
