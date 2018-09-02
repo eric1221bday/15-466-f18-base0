@@ -15,7 +15,32 @@
 // helper defined later; throws if shader compilation fails:
 static GLuint compile_shader(GLenum type, std::string const &source);
 
-Game::Game() {
+static const std::unordered_map<HEX_DIR, double> dir_to_rad{
+    {HEX_DIR::EAST, 0.0f},
+    {HEX_DIR::NORTHEAST, M_PI / 3.0},
+    {HEX_DIR::NORTHWEST, 2.0 * M_PI / 3.0},
+    {HEX_DIR::WEST, M_PI},
+    {HEX_DIR::SOUTHWEST, 4.0 * M_PI / 3.0},
+    {HEX_DIR::SOUTHEAST, 5.0 * M_PI / 3.0}};
+
+static const std::unordered_map<HEX_DIR, HEX_DIR> clockwise{
+    {HEX_DIR::EAST, HEX_DIR::SOUTHEAST},
+    {HEX_DIR::SOUTHEAST, HEX_DIR::SOUTHWEST},
+    {HEX_DIR::SOUTHWEST, HEX_DIR::WEST},
+    {HEX_DIR::WEST, HEX_DIR::NORTHWEST},
+    {HEX_DIR::NORTHWEST, HEX_DIR::NORTHEAST},
+    {HEX_DIR::NORTHEAST, HEX_DIR::EAST}};
+
+static const std::unordered_map<HEX_DIR, HEX_DIR> counterclockwise{
+    {HEX_DIR::EAST, HEX_DIR::NORTHEAST},
+    {HEX_DIR::NORTHEAST, HEX_DIR::NORTHWEST},
+    {HEX_DIR::NORTHWEST, HEX_DIR::WEST},
+    {HEX_DIR::WEST, HEX_DIR::SOUTHWEST},
+    {HEX_DIR::SOUTHWEST, HEX_DIR::SOUTHEAST},
+    {HEX_DIR::SOUTHEAST, HEX_DIR::EAST}};
+
+Game::Game()
+    : distribution_x(0, board_size.x), distribution_y(0, board_size.y) {
   {  // create an opengl program to perform sun/sky (well,
      // directional+hemispherical) lighting:
     GLuint vertex_shader = compile_shader(
@@ -196,6 +221,8 @@ Game::Game() {
     };
     tile_mesh = lookup("board_tile");
     snake_body_mesh = lookup("snake_body");
+    snake_head_mesh = lookup("snake_head");
+    goal_mesh = lookup("goal");
   }
 
   {  // create vertex array object to hold the map from the mesh vertex buffer
@@ -228,6 +255,9 @@ Game::Game() {
 
   //----------------
   // set up game board with meshes and rolls:
+
+  snake_body_pos = {glm::ivec2(board_size.x / 2, board_size.y / 2)};
+  goal_pos = generate_goal_pos();
 }
 
 Game::~Game() {
@@ -248,43 +278,14 @@ bool Game::handle_event(SDL_Event const &evt, glm::uvec2 window_size) {
   if (evt.type == SDL_KEYDOWN && evt.key.repeat) {
     return false;
   }
-  // handle tracking the state of WSAD for roll control:
-  if (evt.type == SDL_KEYDOWN || evt.type == SDL_KEYUP) {
-    if (evt.key.keysym.scancode == SDL_SCANCODE_W) {
-      controls.roll_up = (evt.type == SDL_KEYDOWN);
-      return true;
-    } else if (evt.key.keysym.scancode == SDL_SCANCODE_S) {
-      controls.roll_down = (evt.type == SDL_KEYDOWN);
-      return true;
-    } else if (evt.key.keysym.scancode == SDL_SCANCODE_A) {
-      controls.roll_left = (evt.type == SDL_KEYDOWN);
-      return true;
-    } else if (evt.key.keysym.scancode == SDL_SCANCODE_D) {
-      controls.roll_right = (evt.type == SDL_KEYDOWN);
-      return true;
-    }
-  }
+
   // move cursor on L/R/U/D press:
   if (evt.type == SDL_KEYDOWN && evt.key.repeat == 0) {
     if (evt.key.keysym.scancode == SDL_SCANCODE_LEFT) {
-      if (cursor.x > 0) {
-        cursor.x -= 1;
-      }
+      snake_dir = clockwise.at(snake_dir);
       return true;
     } else if (evt.key.keysym.scancode == SDL_SCANCODE_RIGHT) {
-      if (cursor.x + 1 < board_size.x) {
-        cursor.x += 1;
-      }
-      return true;
-    } else if (evt.key.keysym.scancode == SDL_SCANCODE_UP) {
-      if (cursor.y + 1 < board_size.y) {
-        cursor.y += 1;
-      }
-      return true;
-    } else if (evt.key.keysym.scancode == SDL_SCANCODE_DOWN) {
-      if (cursor.y > 0) {
-        cursor.y -= 1;
-      }
+      snake_dir = counterclockwise.at(snake_dir);
       return true;
     }
   }
@@ -320,6 +321,28 @@ void Game::update(float elapsed) {
   //      }
   //    }
   //  }
+}
+
+glm::ivec2 Game::generate_goal_pos() {
+  std::unordered_set<int32_t> snake_pos_x = {};
+  std::unordered_set<int32_t> snake_pos_y = {};
+
+  for (const auto &snake_pos : snake_body_pos) {
+    snake_pos_x.insert(snake_pos.x);
+    snake_pos_y.insert(snake_pos.y);
+  }
+
+  int32_t x = distribution_x(generator);
+  int32_t y = distribution_x(generator);
+
+  while (snake_pos_x.find(x) != snake_pos_x.end()) {
+    x = distribution_x(generator);
+  }
+  while (snake_pos_y.find(y) != snake_pos_y.end()) {
+    y = distribution_y(generator);
+  }
+
+  return glm::ivec2(x, y);
 }
 
 void Game::draw(glm::uvec2 drawable_size) {
@@ -387,34 +410,53 @@ void Game::draw(glm::uvec2 drawable_size) {
 
   for (uint32_t y = 0; y < board_size.y; ++y) {
     for (uint32_t x = 0; x < board_size.x; ++x) {
-      float current_offset_x;
-      float current_offset_y = y * (3 * hex_offset_y);
-      if (y % 2 == 0) {
-        current_offset_x = x * hex_offset_x * 2 + hex_offset_x;
-      } else {
-        current_offset_x = x * hex_offset_x * 2;
-      }
+      glm::vec2 current_offset = hex_to_pixel(x, y);
       draw_mesh(tile_mesh,
                 glm::mat4(1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f,
-                          0.0f, 1.0f, 0.0f, current_offset_x + 0.5f,
-                          current_offset_y + 0.5f, -0.5f, 1.0f));
-      //      draw_mesh(*board_meshes[y * board_size.x + x],
-      //                glm::mat4(1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f,
-      //                0.0f, 0.0f,
-      //                          0.0f, 1.0f, 0.0f, x + 0.5f, y + 0.5f,
-      //                          0.0f, 1.0f) *
-      //                    glm::mat4_cast(board_rotations[y * board_size.x +
-      //                    x]));
+                          0.0f, 1.0f, 0.0f, current_offset.x + 0.5f,
+                          current_offset.y + 0.5f, -0.5f, 1.0f));
     }
   }
-  //  draw_mesh(
-  //      cursor_mesh,
-  //      glm::mat4(1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f,
-  //                1.0f, 0.0f, cursor.x + 0.5f, cursor.y + 0.5f, 0.0f, 1.0f));
+
+  for (uint32_t i = 0; i < snake_body_pos.size(); i++) {
+    glm::vec2 current_offset =
+        hex_to_pixel(snake_body_pos[i].x, snake_body_pos[i].y);
+    if (i == 0) {
+      draw_mesh(snake_head_mesh,
+                glm::mat4(std::cos(dir_to_rad.at(snake_dir)),
+                          -std::sin(dir_to_rad.at(snake_dir)), 0.0f, 0.0f,
+                          std::sin(dir_to_rad.at(snake_dir)),
+                          std::cos(dir_to_rad.at(snake_dir)), 0.0f, 0.0f, 0.0f,
+                          0.0f, 1.0f, 0.0f, current_offset.x + 0.5f,
+                          current_offset.y + 0.5f, 0.0f, 1.0f));
+    } else {
+      draw_mesh(snake_body_mesh,
+                glm::mat4(1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f,
+                          0.0f, 1.0f, 0.0f, current_offset.x + 0.5f,
+                          current_offset.y + 0.5f, 0.0f, 1.0f));
+    }
+  }
+
+  glm::vec2 goal_offset = hex_to_pixel(goal_pos.x, goal_pos.y);
+  draw_mesh(goal_mesh, glm::mat4(1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f,
+                                 0.0f, 0.0f, 1.0f, 0.0f, goal_offset.x + 0.5f,
+                                 goal_offset.y + 0.5f, 0.0f, 1.0f));
 
   glUseProgram(0);
 
   GL_ERRORS();
+}
+
+glm::vec2 Game::hex_to_pixel(int32_t x, int32_t y) {
+  float current_offset_x;
+  float current_offset_y = y * (3 * hex_offset_y);
+  if (y % 2 == 0) {
+    current_offset_x = x * hex_offset_x * 2 + hex_offset_x;
+  } else {
+    current_offset_x = x * hex_offset_x * 2;
+  }
+
+  return glm::vec2(current_offset_x, current_offset_y);
 }
 
 // create and return an OpenGL vertex shader from source:
