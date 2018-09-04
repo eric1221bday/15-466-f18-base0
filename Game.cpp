@@ -7,6 +7,7 @@
 #include <glm/gtc/type_ptr.hpp>
 
 #include <cstddef>
+#include <ctime>
 #include <fstream>
 #include <iostream>
 #include <map>
@@ -39,8 +40,14 @@ static const std::unordered_map<HEX_DIR, HEX_DIR> counterclockwise{
     {HEX_DIR::SOUTHWEST, HEX_DIR::SOUTHEAST},
     {HEX_DIR::SOUTHEAST, HEX_DIR::EAST}};
 
+static const std::vector<HEX_DIR> directions{
+    {HEX_DIR::EAST, HEX_DIR::NORTHEAST, HEX_DIR::NORTHWEST, HEX_DIR::WEST,
+     HEX_DIR::SOUTHWEST, HEX_DIR::SOUTHEAST}};
+
 Game::Game()
-    : distribution_x(0, board_size.x), distribution_y(0, board_size.y) {
+    : generator(std::time(nullptr)),
+      distribution_x(0, board_size.x - 1),
+      distribution_y(0, board_size.y - 1) {
   {  // create an opengl program to perform sun/sky (well,
      // directional+hemispherical) lighting:
     GLuint vertex_shader = compile_shader(
@@ -256,7 +263,10 @@ Game::Game()
   //----------------
   // set up game board with meshes and rolls:
 
-  snake_body_pos = {glm::ivec2(board_size.x / 2, board_size.y / 2)};
+  //  snake_body_pos = {glm::ivec2(board_size.x / 2, board_size.y / 2)};
+  snake_body_pos = {glm::ivec2(5, 0), glm::ivec2(5, 1), glm::ivec2(5, 2),
+                    glm::ivec2(5, 3), glm::ivec2(5, 4), glm::ivec2(5, 5),
+                    glm::ivec2(5, 6), glm::ivec2(5, 7), glm::ivec2(5, 8)};
   goal_pos = generate_goal_pos();
 }
 
@@ -280,7 +290,7 @@ bool Game::handle_event(SDL_Event const &evt, glm::uvec2 window_size) {
   }
 
   // move cursor on L/R/U/D press:
-  if (evt.type == SDL_KEYDOWN && evt.key.repeat == 0) {
+  if (evt.type == SDL_KEYDOWN && evt.key.repeat == 0 && !game_over) {
     if (evt.key.keysym.scancode == SDL_SCANCODE_LEFT) {
       snake_dir = clockwise.at(snake_dir);
       return true;
@@ -293,56 +303,112 @@ bool Game::handle_event(SDL_Event const &evt, glm::uvec2 window_size) {
 }
 
 void Game::update(float elapsed) {
-  // if the roll keys are pressed, rotate everything on the same row or column
-  // as the cursor:
-  //  glm::quat dr = glm::quat(1.0f, 0.0f, 0.0f, 0.0f);
-  //  float amt = elapsed * 1.0f;
-  //  if (controls.roll_left) {
-  //    dr = glm::angleAxis(amt, glm::vec3(0.0f, 1.0f, 0.0f)) * dr;
-  //  }
-  //  if (controls.roll_right) {
-  //    dr = glm::angleAxis(-amt, glm::vec3(0.0f, 1.0f, 0.0f)) * dr;
-  //  }
-  //  if (controls.roll_up) {
-  //    dr = glm::angleAxis(amt, glm::vec3(1.0f, 0.0f, 0.0f)) * dr;
-  //  }
-  //  if (controls.roll_down) {
-  //    dr = glm::angleAxis(-amt, glm::vec3(1.0f, 0.0f, 0.0f)) * dr;
-  //  }
-  //  if (dr != glm::quat()) {
-  //    for (uint32_t x = 0; x < board_size.x; ++x) {
-  //      glm::quat &r = board_rotations[cursor.y * board_size.x + x];
-  //      r = glm::normalize(dr * r);
-  //    }
-  //    for (uint32_t y = 0; y < board_size.y; ++y) {
-  //      if (y != cursor.y) {
-  //        glm::quat &r = board_rotations[y * board_size.x + cursor.x];
-  //        r = glm::normalize(dr * r);
-  //      }
-  //    }
-  //  }
+  static float time_since_update = 0.0f;
+  if (time_since_update > 1.0f && !game_over) {
+    time_since_update = 0.0f;
+    glm::ivec2 new_pos = get_adjacent_hex(snake_body_pos[0], snake_dir);
+
+    if (new_pos.x >= 0 && new_pos.y >= 0 && new_pos.x < board_size.x &&
+        new_pos.y < board_size.y &&
+        std::find(snake_body_pos.begin(), snake_body_pos.end(), new_pos) ==
+            snake_body_pos.end() &&
+        snake_body_pos.size() < (board_size.x * board_size.y)) {
+      snake_body_pos.insert(snake_body_pos.begin(), new_pos);
+      snake_body_pos.pop_back();
+
+      // snake ate the goal, generate new goal, extend snake
+      if (snake_body_pos[0] == goal_pos) {
+        append_snake_body();
+        goal_pos = generate_goal_pos();
+      }
+    } else {
+      game_over = true;
+    }
+
+  } else {
+    time_since_update += elapsed;
+  }
+}
+
+uint32_t Game::get_game_score() { return snake_body_pos.size() - 1; }
+
+glm::ivec2 Game::get_adjacent_hex(glm::ivec2 pos, HEX_DIR dir) {
+  glm::ivec2 new_pos;
+
+  switch (dir) {
+    case HEX_DIR::EAST:
+      new_pos = pos + glm::ivec2(1.0, 0.0);
+      break;
+    case HEX_DIR::NORTHWEST:
+      if (pos.y % 2 == 0) {
+        new_pos = pos + glm::ivec2(0.0, -1.0);
+      } else {
+        new_pos = pos + glm::ivec2(-1.0, -1.0);
+      }
+      break;
+    case HEX_DIR::NORTHEAST:
+      if (pos.y % 2 == 0) {
+        new_pos = pos + glm::ivec2(1.0, -1.0);
+      } else {
+        new_pos = pos + glm::ivec2(0.0, -1.0);
+      }
+      break;
+    case HEX_DIR::WEST:
+      new_pos = pos + glm::ivec2(-1.0, 0.0);
+      break;
+    case HEX_DIR::SOUTHEAST:
+      if (pos.y % 2 == 0) {
+        new_pos = pos + glm::ivec2(1.0, 1.0);
+      } else {
+        new_pos = pos + glm::ivec2(0.0, 1.0);
+      }
+      break;
+    case HEX_DIR::SOUTHWEST:
+      if (pos.y % 2 == 0) {
+        new_pos = pos + glm::ivec2(0.0, 1.0);
+      } else {
+        new_pos = pos + glm::ivec2(-1.0, 1.0);
+      }
+      break;
+  }
+
+  return new_pos;
 }
 
 glm::ivec2 Game::generate_goal_pos() {
-  std::unordered_set<int32_t> snake_pos_x = {};
-  std::unordered_set<int32_t> snake_pos_y = {};
-
-  for (const auto &snake_pos : snake_body_pos) {
-    snake_pos_x.insert(snake_pos.x);
-    snake_pos_y.insert(snake_pos.y);
-  }
-
   int32_t x = distribution_x(generator);
   int32_t y = distribution_x(generator);
 
-  while (snake_pos_x.find(x) != snake_pos_x.end()) {
+  while (std::find(snake_body_pos.begin(), snake_body_pos.end(),
+                   glm::ivec2(x, y)) != snake_body_pos.end()) {
     x = distribution_x(generator);
-  }
-  while (snake_pos_y.find(y) != snake_pos_y.end()) {
-    y = distribution_y(generator);
+    y = distribution_x(generator);
   }
 
   return glm::ivec2(x, y);
+}
+
+void Game::append_snake_body() {
+  glm::ivec2 snake_tail = snake_body_pos.back();
+  std::vector<HEX_DIR> valid_directions(directions);
+
+  // don't generate tail at front of snake head
+  if (snake_body_pos.size() == 1) {
+    valid_directions.erase(
+        std::find(valid_directions.begin(), valid_directions.end(), snake_dir));
+  }
+
+  for (const HEX_DIR dir : valid_directions) {
+    glm::ivec2 new_pos = get_adjacent_hex(snake_tail, dir);
+
+    if (new_pos.x >= 0 && new_pos.y >= 0 && new_pos.x < board_size.x &&
+        new_pos.y < board_size.y &&
+        std::find(snake_body_pos.begin(), snake_body_pos.end(), new_pos) ==
+            snake_body_pos.end()) {
+      snake_body_pos.push_back(new_pos);
+      return;
+    }
+  }
 }
 
 void Game::draw(glm::uvec2 drawable_size) {

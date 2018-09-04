@@ -35,7 +35,13 @@ struct Game {
 
   glm::ivec2 generate_goal_pos();
 
+  void append_snake_body();
+
+  glm::ivec2 get_adjacent_hex(glm::ivec2 pos, HEX_DIR dir);
+
   glm::vec2 hex_to_pixel(int32_t x, int32_t y);
+
+  uint32_t get_game_score();
 
   //------- opengl resources -------
 
@@ -88,10 +94,5 @@ struct Game {
 
   HEX_DIR snake_dir = HEX_DIR::EAST;
 
-  struct {
-    bool roll_left = false;
-    bool roll_right = false;
-    bool roll_up = false;
-    bool roll_down = false;
-  } controls;
+  bool game_over = false;
 };
