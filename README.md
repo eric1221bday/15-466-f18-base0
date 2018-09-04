@@ -1,11 +1,11 @@
 # Game Information
 (Note: fill in this portion with information about your game.)
 
-Title: (TODO: your game's title)
+Title: Hex Snake
 
-Author: (TODO: your name)
+Author: Eric Fang
 
-Design Document: [TODO: name of design document](TODO: link to design document)
+Design Document: [Hex Snake Design Doc](https://github.com/eric1221bday/15-466-hex-snake-design)
 
 Screen Shot:
 
@@ -13,7 +13,7 @@ Screen Shot:
 
 Difficulties Encountered:
 
-TODO: write several sentences about any difficulties you may have encountered in creating the game.
+Learning blender in order to generate the meshes and create vertex colors presented some difficulties. Representation and display of hex grid also presented some challenge.
 
 Good Code:
 
