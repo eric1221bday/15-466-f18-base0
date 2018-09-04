@@ -159,7 +159,7 @@ Game::Game()
   static_assert(sizeof(Vertex) == 28, "Vertex should be packed.");
 
   {  // load mesh data from a binary blob:
-    std::ifstream blob(data_path("hex-snake-meshes.blob"), std::ios::binary);
+    std::ifstream blob(data_path("meshes.blob"), std::ios::binary);
     // The blob will be made up of three chunks:
     // the first chunk will be vertex data (interleaved position/normal/color)
     // the second chunk will be characters
