@@ -146,7 +146,7 @@ int main(int argc, char **argv) {
       elapsed = std::min(0.1f, elapsed);
 
       game->update(elapsed);
-      if (!game) break;
+      if (!game || game->game_over) break;
     }
 
     {  //(3) call the game's "draw" function to produce output:

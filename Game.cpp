@@ -263,10 +263,10 @@ Game::Game()
   //----------------
   // set up game board with meshes and rolls:
 
-  //  snake_body_pos = {glm::ivec2(board_size.x / 2, board_size.y / 2)};
-  snake_body_pos = {glm::ivec2(5, 0), glm::ivec2(5, 1), glm::ivec2(5, 2),
-                    glm::ivec2(5, 3), glm::ivec2(5, 4), glm::ivec2(5, 5),
-                    glm::ivec2(5, 6), glm::ivec2(5, 7), glm::ivec2(5, 8)};
+  snake_body_pos = {glm::ivec2(board_size.x / 2, board_size.y / 2)};
+  //  snake_body_pos = {glm::ivec2(5, 0), glm::ivec2(5, 1), glm::ivec2(5, 2),
+  //                    glm::ivec2(5, 3), glm::ivec2(5, 4), glm::ivec2(5, 5),
+  //                    glm::ivec2(5, 6), glm::ivec2(5, 7), glm::ivec2(5, 8)};
   goal_pos = generate_goal_pos();
 }
 
@@ -323,6 +323,8 @@ void Game::update(float elapsed) {
       }
     } else {
       game_over = true;
+      std::cout << "Game Over!" << std::endl;
+      std::cout << "Final Score: " << snake_body_pos.size() << std::endl;
     }
 
   } else {
