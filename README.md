@@ -1,5 +1,5 @@
 # Game Information
-(Note: fill in this portion with information about your game.)
+Simple Snake game played on a hexagonal grid.
 
 Title: Hex Snake
 
@@ -9,7 +9,7 @@ Design Document: [Hex Snake Design Doc](https://github.com/eric1221bday/15-466-h
 
 Screen Shot:
 
-![Screen Shot](screenshot.png)
+![Screen Shot](hex-snake.png)
 
 Difficulties Encountered:
 
@@ -17,7 +17,7 @@ Learning blender in order to generate the meshes and create vertex colors presen
 
 Good Code:
 
-TODO: write a sentence or two about any code you think you did particularly well.
+I am quite happy with how I handled the navigation and display of the underlying hexagonal grid system.
 
 # Using This Base Code
 
